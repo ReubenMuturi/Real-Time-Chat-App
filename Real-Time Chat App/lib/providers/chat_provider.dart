@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/message.dart';          // ← THIS LINE WAS MISSING
 import '../repositories/chat_repository.dart';
 
 final chatRepositoryProvider = Provider.family<ChatRepository, String>((ref, chatRoomId) {
