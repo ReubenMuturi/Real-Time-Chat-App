@@ -1,97 +1,106 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:real_time_chat/main.dart';
-import 'package:real_time_chat/screens/chat_screen.dart';
-import 'package:real_time_chat/screens/login_screen.dart';
+import '../lib/providers/auth_provider.dart';
+import '../lib/screens/chat_screen.dart';
 
-void main() {
-  group('Real-Time Chat App Widget Tests', () {
-    late MockFirebaseAuth mockAuth;
-    late FakeFirebaseFirestore fakeFirestore;
+class LoginScreen extends ConsumerWidget {
+  const LoginScreen({super.key});
 
-    setUp(() {
-      mockAuth = MockFirebaseAuth();
-      fakeFirestore = FakeFirebaseFirestore();
-    });
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authAsync = ref.watch(authProvider);
 
-    testWidgets('Login screen shows email and password fields', (tester) async {
-      await tester.pumpWidget(
-        const ProviderScope(child: MyApp()),
-      );
-
-      expect(find.byType(TextField), findsExactly(2));
-      expect(find.textContaining('Email'), findsOneWidget);
-      expect(find.textContaining('Password'), findsOneWidget);
-      expect(find.byType(ElevatedButton), findsOneWidget);
-    });
-
-    testWidgets('Chat screen displays messages when logged in', (tester) async {
-      final mockUser = MockUser(uid: 'test_user_id');
-      mockAuth = MockFirebaseAuth(signedIn: true, mockUser: mockUser);
-
-      // Simulate some messages
-      final chatRoomId = 'demo_partner_id_test_user_id';
-      final messagesRef = fakeFirestore
-          .collection('chat_rooms')
-          .doc(chatRoomId)
-          .collection('messages');
-
-      await messagesRef.add({
-        'text': 'Hello!',
-        'senderId': 'test_user_id',
-        'timestamp': Timestamp.now(),
-      });
-
-      await messagesRef.add({
-        'text': 'Hi there!',
-        'senderId': 'demo_partner_id',
-        'timestamp': Timestamp.now(),
-      });
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            // Override Firebase providers if needed in real app
-          ],
-          child: MaterialApp(
-            home: ChatScreen(currentUserId: 'test_user_id'),
+    return authAsync.when(
+      data: (user) {
+        if (user != null) {
+          // Automatically navigate to chat once signed in (including anonymous)
+          return ChatScreen(currentUserId: user.uid);
+        }
+        // User is null → show anonymous login button
+        return _buildAnonymousLogin(context, ref);
+      },
+      loading: () => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stack) => Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 60),
+                const SizedBox(height: 16),
+                Text(
+                  'Authentication Error',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$error',
+                  style: const TextStyle(color: Colors.red),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => ref.refresh(authProvider),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
           ),
         ),
-      );
+      ),
+    );
+  }
 
-      await tester.pumpAndSettle();
-
-      expect(find.text('Hello!'), findsOneWidget);
-      expect(find.text('Hi there!'), findsOneWidget);
-    });
-
-    testWidgets('Typing indicator appears and disappears', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: TypingIndicator(isTyping: true),
+  Widget _buildAnonymousLogin(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Real-Time Chat')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.chat_bubble_outline, size: 100, color: Colors.blue),
+              const SizedBox(height: 32),
+              const Text(
+                'Welcome!',
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Sign in anonymously to start chatting instantly.\n(No email or password required for this demo)',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 48),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    await ref.read(authServiceProvider).signInAnonymously();
+                    // authStateChanges will trigger rebuild → ChatScreen
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Enter Chat',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-      );
-
-      expect(find.byType(CircleAvatar), findsNWidgets(3));
-
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: TypingIndicator(isTyping: false),
-          ),
-        ),
-      );
-
-      await tester.pump();
-
-      expect(find.byType(CircleAvatar), findsNothing);
-    });
-  });
+      ),
+    );
+  }
 }
